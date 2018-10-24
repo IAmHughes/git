@@ -2278,7 +2278,7 @@ int git_config_get_max_percent_split_change(void)
 int git_config_get_fsmonitor(void)
 {
 	if (git_config_get_pathname("core.fsmonitor", &core_fsmonitor))
-		core_fsmonitor = getenv("GIT_FSMONITOR_TEST");
+		core_fsmonitor = getenv("GIT_TEST_FSMONITOR");
 
 	if (core_fsmonitor && !*core_fsmonitor)
 		core_fsmonitor = NULL;
@@ -2287,6 +2287,24 @@ int git_config_get_fsmonitor(void)
 		return 1;
 
 	return 0;
+}
+
+int git_config_get_index_threads(void)
+{
+	int is_bool, val = 0;
+
+	val = git_env_ulong("GIT_TEST_INDEX_THREADS", 0);
+	if (val)
+		return val;
+
+	if (!git_config_get_bool_or_int("index.threads", &is_bool, &val)) {
+		if (is_bool)
+			return val ? 0 : 1;
+		else
+			return val;
+	}
+
+	return 0; /* auto */
 }
 
 NORETURN

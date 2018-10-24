@@ -225,7 +225,7 @@ boolean::
 	false;; Boolean false literals are `no`, `off`, `false`,
 		`0` and the empty string.
 +
-When converting value to the canonical form using `--bool` type
+When converting a value to its canonical form using the `--type=bool` type
 specifier, 'git config' will ensure that the output is "true" or
 "false" (spelled in lowercase).
 
@@ -615,6 +615,24 @@ core.preferSymlinkRefs::
 	and other symbolic reference files, use symbolic links.
 	This is sometimes needed to work with old scripts that
 	expect HEAD to be a symbolic link.
+
+core.alternateRefsCommand::
+	When advertising tips of available history from an alternate, use the shell to
+	execute the specified command instead of linkgit:git-for-each-ref[1]. The
+	first argument is the absolute path of the alternate. Output must contain one
+	hex object id per line (i.e., the same as produce by `git for-each-ref
+	--format='%(objectname)'`).
++
+Note that you cannot generally put `git for-each-ref` directly into the config
+value, as it does not take a repository path as an argument (but you can wrap
+the command above in a shell script).
+
+core.alternateRefsPrefixes::
+	When listing references from an alternate, list only references that begin
+	with the given prefix. Prefixes match as if they were given as arguments to
+	linkgit:git-for-each-ref[1]. To list multiple prefixes, separate them with
+	whitespace. If `core.alternateRefsCommand` is set, setting
+	`core.alternateRefsPrefixes` has no effect.
 
 core.bare::
 	If true this repository is assumed to be 'bare' and has no
@@ -1643,7 +1661,8 @@ gc.writeCommitGraph::
 	for details.
 
 gc.logExpiry::
-	If the file gc.log exists, then `git gc --auto` won't run
+	If the file gc.log exists, then `git gc --auto` will print
+	its content and exit with status zero instead of running
 	unless that file is more than 'gc.logExpiry' old.  Default is
 	"1.day".  See `gc.pruneExpire` for more ways to specify its
 	value.
@@ -2147,6 +2166,13 @@ i18n.logOutputEncoding::
 imap::
 	The configuration variables in the 'imap' section are described
 	in linkgit:git-imap-send[1].
+
+index.threads::
+	Specifies the number of threads to spawn when loading the index.
+	This is meant to reduce index load time on multiprocessor machines.
+	Specifying 0 or 'true' will cause Git to auto-detect the number of
+	CPU's and set the number of threads accordingly. Specifying 1 or
+	'false' will disable multithreading. Defaults to 'true'.
 
 index.version::
 	Specify the version with which new index files should be
@@ -2995,14 +3021,14 @@ uploadpack.packObjectsHook::
 	was run. I.e., `upload-pack` will feed input intended for
 	`pack-objects` to the hook, and expects a completed packfile on
 	stdout.
-
-uploadpack.allowFilter::
-	If this option is set, `upload-pack` will support partial
-	clone and partial fetch object filtering.
 +
 Note that this configuration variable is ignored if it is seen in the
 repository-level config (this is a safety measure against fetching from
 untrusted repositories).
+
+uploadpack.allowFilter::
+	If this option is set, `upload-pack` will support partial
+	clone and partial fetch object filtering.
 
 uploadpack.allowRefInWant::
 	If this option is set, `upload-pack` will support the `ref-in-want`
