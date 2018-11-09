@@ -205,6 +205,8 @@ int register_commit_graft(struct repository *r, struct commit_graft *, int);
 void prepare_commit_graft(struct repository *r);
 struct commit_graft *lookup_commit_graft(struct repository *r, const struct object_id *oid);
 
+struct commit *get_fork_point(const char *refname, struct commit *commit);
+
 /* largest positive number a signed 32-bit integer can contain */
 #define INFINITE_DEPTH 0x7fffffff
 
@@ -249,7 +251,9 @@ extern void assign_shallow_commits_to_refs(struct shallow_info *info,
 					   uint32_t **used,
 					   int *ref_status);
 extern int delayed_reachability_test(struct shallow_info *si, int c);
-extern void prune_shallow(int show_only);
+#define PRUNE_SHOW_ONLY 1
+#define PRUNE_QUICK 2
+extern void prune_shallow(unsigned options);
 extern struct trace_key trace_shallow;
 
 extern int interactive_add(int argc, const char **argv, const char *prefix, int patch);
