@@ -176,9 +176,13 @@ cleanup_fail:
 	return NULL;
 }
 
-static void close_midx(struct multi_pack_index *m)
+void close_midx(struct multi_pack_index *m)
 {
 	uint32_t i;
+
+	if (!m)
+		return;
+
 	munmap((unsigned char *)m->data, m->data_len);
 	close(m->fd);
 	m->fd = -1;
@@ -186,7 +190,7 @@ static void close_midx(struct multi_pack_index *m)
 	for (i = 0; i < m->num_packs; i++) {
 		if (m->packs[i]) {
 			close_pack(m->packs[i]);
-			free(m->packs);
+			free(m->packs[i]);
 		}
 	}
 	FREE_AND_NULL(m->packs);
@@ -331,9 +335,14 @@ int prepare_multi_pack_index_one(struct repository *r, const char *object_dir, i
 	struct multi_pack_index *m;
 	struct multi_pack_index *m_search;
 	int config_value;
+	static int env_value = -1;
 
-	if (repo_config_get_bool(r, "core.multipackindex", &config_value) ||
-	    !config_value)
+	if (env_value < 0)
+		env_value = git_env_bool(GIT_TEST_MULTI_PACK_INDEX, 0);
+
+	if (!env_value &&
+	    (repo_config_get_bool(r, "core.multipackindex", &config_value) ||
+	    !config_value))
 		return 0;
 
 	for (m_search = r->objects->multi_pack_index; m_search; m_search = m_search->next)
@@ -712,12 +721,18 @@ static size_t write_midx_object_offsets(struct hashfile *f, int large_offset_nee
 static size_t write_midx_large_offsets(struct hashfile *f, uint32_t nr_large_offset,
 				       struct pack_midx_entry *objects, uint32_t nr_objects)
 {
-	struct pack_midx_entry *list = objects;
+	struct pack_midx_entry *list = objects, *end = objects + nr_objects;
 	size_t written = 0;
 
 	while (nr_large_offset) {
-		struct pack_midx_entry *obj = list++;
-		uint64_t offset = obj->offset;
+		struct pack_midx_entry *obj;
+		uint64_t offset;
+
+		if (list >= end)
+			BUG("too many large-offset objects");
+
+		obj = list++;
+		offset = obj->offset;
 
 		if (!(offset >> 31))
 			continue;
@@ -914,9 +929,14 @@ cleanup:
 	return 0;
 }
 
-void clear_midx_file(const char *object_dir)
+void clear_midx_file(struct repository *r)
 {
-	char *midx = get_midx_filename(object_dir);
+	char *midx = get_midx_filename(r->objects->objectdir);
+
+	if (r->objects && r->objects->multi_pack_index) {
+		close_midx(r->objects->multi_pack_index);
+		r->objects->multi_pack_index = NULL;
+	}
 
 	if (remove_path(midx)) {
 		UNLEAK(midx);

@@ -122,6 +122,11 @@ EOT
 	exit(1);
 }
 
+sub completion_helper {
+    print Git::command('format-patch', '--git-completion-helper');
+    exit(0);
+}
+
 # most mail servers generate the Date: header, but not all...
 sub format_2822_time {
 	my ($time) = @_;
@@ -314,6 +319,7 @@ $SIG{INT}  = \&signal_handler;
 # needing, first, from the command line:
 
 my $help;
+my $git_completion_helper;
 my $rc = GetOptions("h" => \$help,
                     "dump-aliases" => \$dump_aliases);
 usage() unless $rc;
@@ -377,9 +383,11 @@ $rc = GetOptions(
 		    "no-xmailer" => sub {$use_xmailer = 0},
 		    "batch-size=i" => \$batch_size,
 		    "relogin-delay=i" => \$relogin_delay,
+		    "git-completion-helper" => \$git_completion_helper,
 	 );
 
 usage() if $help;
+completion_helper() if $git_completion_helper;
 unless ($rc) {
     usage();
 }
@@ -1848,7 +1856,7 @@ sub apply_transfer_encoding {
 	my $from = shift;
 	my $to = shift;
 
-	return $message if ($from eq $to and $from ne '7bit');
+	return ($message, $to) if ($from eq $to and $from ne '7bit');
 
 	require MIME::QuotedPrint;
 	require MIME::Base64;
