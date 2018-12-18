@@ -2083,9 +2083,9 @@ static int try_delta(struct unpacked *trg, struct unpacked *src,
 			die(_("object %s cannot be read"),
 			    oid_to_hex(&trg_entry->idx.oid));
 		if (sz != trg_size)
-			die(_("object %s inconsistent object length (%lu vs %lu)"),
-			    oid_to_hex(&trg_entry->idx.oid), sz,
-			    trg_size);
+			die(_("object %s inconsistent object length (%"PRIuMAX" vs %"PRIuMAX")"),
+			    oid_to_hex(&trg_entry->idx.oid), (uintmax_t)sz,
+			    (uintmax_t)trg_size);
 		*mem_usage += sz;
 	}
 	if (!src->data) {
@@ -2110,9 +2110,9 @@ static int try_delta(struct unpacked *trg, struct unpacked *src,
 			    oid_to_hex(&src_entry->idx.oid));
 		}
 		if (sz != src_size)
-			die(_("object %s inconsistent object length (%lu vs %lu)"),
-			    oid_to_hex(&src_entry->idx.oid), sz,
-			    src_size);
+			die(_("object %s inconsistent object length (%"PRIuMAX" vs %"PRIuMAX")"),
+			    oid_to_hex(&src_entry->idx.oid), (uintmax_t)sz,
+			    (uintmax_t)src_size);
 		*mem_usage += sz;
 	}
 	if (!src->index) {
@@ -2786,9 +2786,11 @@ static void show_object(struct object *obj, const char *name, void *data)
 
 	if (use_delta_islands) {
 		const char *p;
-		unsigned depth = 0;
+		unsigned depth;
 		struct object_entry *ent;
 
+		/* the empty string is a root tree, which is depth 0 */
+		depth = *name ? 1 : 0;
 		for (p = strchr(name, '/'); p; p = strchr(p + 1, '/'))
 			depth++;
 
@@ -3084,6 +3086,7 @@ static void get_object_list(int ac, const char **av)
 	struct rev_info revs;
 	char line[1000];
 	int flags = 0;
+	int save_warning;
 
 	repo_init_revisions(the_repository, &revs, NULL);
 	save_commit_buffer = 0;
@@ -3092,6 +3095,9 @@ static void get_object_list(int ac, const char **av)
 
 	/* make sure shallows are read */
 	is_repository_shallow(the_repository);
+
+	save_warning = warn_on_object_refname_ambiguity;
+	warn_on_object_refname_ambiguity = 0;
 
 	while (fgets(line, sizeof(line), stdin) != NULL) {
 		int len = strlen(line);
@@ -3118,6 +3124,8 @@ static void get_object_list(int ac, const char **av)
 		if (handle_revision_arg(line, &revs, flags, REVARG_CANNOT_BE_FILENAME))
 			die(_("bad revision '%s'"), line);
 	}
+
+	warn_on_object_refname_ambiguity = save_warning;
 
 	if (use_bitmap_index && !get_object_list_from_bitmap(&revs))
 		return;

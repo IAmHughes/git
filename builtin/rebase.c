@@ -582,7 +582,8 @@ static int reset_head(struct object_id *oid, const char *action,
 	}
 
 	if (!reset_hard && !fill_tree_descriptor(&desc[nr++], &head_oid)) {
-		ret = error(_("failed to find tree of %s"), oid_to_hex(oid));
+		ret = error(_("failed to find tree of %s"),
+			    oid_to_hex(&head_oid));
 		goto leave_reset_head;
 	}
 
@@ -775,6 +776,23 @@ static void NORETURN error_on_missing_default_upstream(void)
 	exit(1);
 }
 
+static void set_reflog_action(struct rebase_options *options)
+{
+	const char *env;
+	struct strbuf buf = STRBUF_INIT;
+
+	if (!is_interactive(options))
+		return;
+
+	env = getenv(GIT_REFLOG_ACTION_ENVIRONMENT);
+	if (env && strcmp("rebase", env))
+		return; /* only override it if it is "rebase" */
+
+	strbuf_addf(&buf, "rebase -i (%s)", options->action);
+	setenv(GIT_REFLOG_ACTION_ENVIRONMENT, buf.buf, 1);
+	strbuf_release(&buf);
+}
+
 int cmd_rebase(int argc, const char **argv, const char *prefix)
 {
 	struct rebase_options options = {
@@ -870,7 +888,7 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 			       "them"), REBASE_PRESERVE_MERGES),
 		OPT_BOOL(0, "rerere-autoupdate",
 			 &options.allow_rerere_autoupdate,
-			 N_("allow rerere to update index  with resolved "
+			 N_("allow rerere to update index with resolved "
 			    "conflict")),
 		OPT_BOOL('k', "keep-empty", &options.keep_empty,
 			 N_("preserve empty commits during rebase")),
@@ -977,6 +995,7 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 
 	if (action != NO_ACTION && !in_progress)
 		die(_("No rebase in progress?"));
+	setenv(GIT_REFLOG_ACTION_ENVIRONMENT, "rebase", 0);
 
 	if (action == ACTION_EDIT_TODO && !is_interactive(&options))
 		die(_("The --edit-todo action can only be used during "
@@ -989,6 +1008,7 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 		int fd;
 
 		options.action = "continue";
+		set_reflog_action(&options);
 
 		/* Sanity check */
 		if (get_oid("HEAD", &head))
@@ -1017,6 +1037,7 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 		struct string_list merge_rr = STRING_LIST_INIT_DUP;
 
 		options.action = "skip";
+		set_reflog_action(&options);
 
 		rerere_clear(&merge_rr);
 		string_list_clear(&merge_rr, 1);
@@ -1032,6 +1053,7 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 	case ACTION_ABORT: {
 		struct string_list merge_rr = STRING_LIST_INIT_DUP;
 		options.action = "abort";
+		set_reflog_action(&options);
 
 		rerere_clear(&merge_rr);
 		string_list_clear(&merge_rr, 1);
@@ -1439,11 +1461,12 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 				}
 
 				strbuf_reset(&buf);
-				strbuf_addf(&buf, "rebase: checkout %s",
+				strbuf_addf(&buf, "%s: checkout %s",
+					    getenv(GIT_REFLOG_ACTION_ENVIRONMENT),
 					    options.switch_to);
 				if (reset_head(&oid, "checkout",
 					       options.head_name, 0,
-					       NULL, NULL) < 0) {
+					       NULL, buf.buf) < 0) {
 					ret = !!error(_("could not switch to "
 							"%s"),
 						      options.switch_to);
@@ -1480,10 +1503,15 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 	if (options.flags & REBASE_DIFFSTAT) {
 		struct diff_options opts;
 
-		if (options.flags & REBASE_VERBOSE)
-			printf(_("Changes from %s to %s:\n"),
-				oid_to_hex(&merge_base),
-				oid_to_hex(&options.onto->object.oid));
+		if (options.flags & REBASE_VERBOSE) {
+			if (is_null_oid(&merge_base))
+				printf(_("Changes to %s:\n"),
+				       oid_to_hex(&options.onto->object.oid));
+			else
+				printf(_("Changes from %s to %s:\n"),
+				       oid_to_hex(&merge_base),
+				       oid_to_hex(&options.onto->object.oid));
+		}
 
 		/* We want color (if set), but no pager */
 		diff_setup(&opts);
@@ -1493,8 +1521,9 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 			DIFF_FORMAT_SUMMARY | DIFF_FORMAT_DIFFSTAT;
 		opts.detect_rename = DIFF_DETECT_RENAME;
 		diff_setup_done(&opts);
-		diff_tree_oid(&merge_base, &options.onto->object.oid,
-			      "", &opts);
+		diff_tree_oid(is_null_oid(&merge_base) ?
+			      the_hash_algo->empty_tree : &merge_base,
+			      &options.onto->object.oid, "", &opts);
 		diffcore_std(&opts);
 		diff_flush(&opts);
 	}
@@ -1507,7 +1536,8 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 		printf(_("First, rewinding head to replay your work on top of "
 			 "it...\n"));
 
-	strbuf_addf(&msg, "rebase: checkout %s", options.onto_name);
+	strbuf_addf(&msg, "%s: checkout %s",
+		    getenv(GIT_REFLOG_ACTION_ENVIRONMENT), options.onto_name);
 	if (reset_head(&options.onto->object.oid, "checkout", NULL,
 		       RESET_HEAD_DETACH, NULL, msg.buf))
 		die(_("Could not detach HEAD"));
@@ -1519,7 +1549,7 @@ int cmd_rebase(int argc, const char **argv, const char *prefix)
 	 */
 	strbuf_reset(&msg);
 	if (!oidcmp(&merge_base, &options.orig_head)) {
-		printf(_("Fast-forwarded %s to %s. \n"),
+		printf(_("Fast-forwarded %s to %s.\n"),
 			branch_name, options.onto_name);
 		strbuf_addf(&msg, "rebase finished: %s onto %s",
 			options.head_name ? options.head_name : "detached HEAD",

@@ -49,17 +49,27 @@ export ASAN_OPTIONS
 : ${LSAN_OPTIONS=abort_on_error=1}
 export LSAN_OPTIONS
 
-################################################################
-# It appears that people try to run tests without building...
-"$GIT_BUILD_DIR/git" >/dev/null
-if test $? != 1
+if test ! -f "$GIT_BUILD_DIR"/GIT-BUILD-OPTIONS
 then
-	echo >&2 'error: you do not seem to have built git yet.'
+	echo >&2 'error: GIT-BUILD-OPTIONS missing (has Git been built?).'
 	exit 1
 fi
-
 . "$GIT_BUILD_DIR"/GIT-BUILD-OPTIONS
 export PERL_PATH SHELL_PATH
+
+################################################################
+# It appears that people try to run tests without building...
+"${GIT_TEST_INSTALLED:-$GIT_BUILD_DIR}/git$X" >/dev/null
+if test $? != 1
+then
+	if test -n "$GIT_TEST_INSTALLED"
+	then
+		echo >&2 "error: there is no working Git at '$GIT_TEST_INSTALLED'"
+	else
+		echo >&2 'error: you do not seem to have built git yet.'
+	fi
+	exit 1
+fi
 
 # if --tee was passed, write the output not only to the terminal, but
 # additionally to the file test-results/$BASENAME.out, too.
@@ -95,6 +105,16 @@ PAGER=cat
 TZ=UTC
 export LANG LC_ALL PAGER TZ
 EDITOR=:
+
+# GIT_TEST_GETTEXT_POISON should not influence git commands executed
+# during initialization of test-lib and the test repo. Back it up,
+# unset and then restore after initialization is finished.
+if test -n "$GIT_TEST_GETTEXT_POISON"
+then
+	GIT_TEST_GETTEXT_POISON_ORIG=$GIT_TEST_GETTEXT_POISON
+	unset GIT_TEST_GETTEXT_POISON
+fi
+
 # A call to "unset" with no arguments causes at least Solaris 10
 # /usr/xpg4/bin/sh and /bin/ksh to bail out.  So keep the unsets
 # deriving from the command substitution clustered with the other
@@ -380,6 +400,10 @@ error () {
 	say_color error "error: $*"
 	GIT_EXIT_OK=t
 	exit 1
+}
+
+BUG () {
+	error >&7 "bug in the test script: $*"
 }
 
 say () {
@@ -709,7 +733,7 @@ test_run_ () {
 		if $(printf '%s\n' "$1" | sed -f "$GIT_BUILD_DIR/t/chainlint.sed" | grep -q '?![A-Z][A-Z]*?!') ||
 			test "OK-117" != "$(test_eval_ "(exit 117) && $1${LF}${LF}echo OK-\$?" 3>&1)"
 		then
-			error "bug in the test script: broken &&-chain or run-away HERE-DOC: $1"
+			BUG "broken &&-chain or run-away HERE-DOC: $1"
 		fi
 		trace=$trace_tmp
 	fi
@@ -957,7 +981,7 @@ elif test -n "$GIT_TEST_INSTALLED"
 then
 	GIT_EXEC_PATH=$($GIT_TEST_INSTALLED/git --exec-path)  ||
 	error "Cannot run git from $GIT_TEST_INSTALLED."
-	PATH=$GIT_TEST_INSTALLED:$GIT_BUILD_DIR:$PATH
+	PATH=$GIT_TEST_INSTALLED:$GIT_BUILD_DIR/t/helper:$PATH
 	GIT_EXEC_PATH=${GIT_TEST_EXEC_PATH:-$GIT_EXEC_PATH}
 else # normal case, use ../bin-wrappers only unless $with_dashes:
 	git_bin_dir="$GIT_BUILD_DIR/bin-wrappers"
@@ -1104,13 +1128,15 @@ test -n "$USE_LIBPCRE1" && test_set_prereq LIBPCRE1
 test -n "$USE_LIBPCRE2" && test_set_prereq LIBPCRE2
 test -z "$NO_GETTEXT" && test_set_prereq GETTEXT
 
-# Can we rely on git's output in the C locale?
-if test -n "$GETTEXT_POISON"
+if test -n "$GIT_TEST_GETTEXT_POISON_ORIG"
 then
-	GIT_GETTEXT_POISON=YesPlease
-	export GIT_GETTEXT_POISON
-	test_set_prereq GETTEXT_POISON
-else
+	GIT_TEST_GETTEXT_POISON=$GIT_TEST_GETTEXT_POISON_ORIG
+	unset GIT_TEST_GETTEXT_POISON_ORIG
+fi
+
+# Can we rely on git's output in the C locale?
+if test -z "$GIT_TEST_GETTEXT_POISON"
+then
 	test_set_prereq C_LOCALE_OUTPUT
 fi
 
@@ -1209,7 +1235,7 @@ test_lazy_prereq SANITY '
 	chmod -w SANETESTD.1 &&
 	chmod -r SANETESTD.1/x &&
 	chmod -rx SANETESTD.2 ||
-	error "bug in test sript: cannot prepare SANETESTD"
+	BUG "cannot prepare SANETESTD"
 
 	! test -r SANETESTD.1/x &&
 	! rm SANETESTD.1/x && ! test -f SANETESTD.2/x
@@ -1217,7 +1243,7 @@ test_lazy_prereq SANITY '
 
 	chmod +rwx SANETESTD.1 SANETESTD.2 &&
 	rm -rf SANETESTD.1 SANETESTD.2 ||
-	error "bug in test sript: cannot clean SANETESTD"
+	BUG "cannot clean SANETESTD"
 	return $status
 '
 

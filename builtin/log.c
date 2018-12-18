@@ -1011,8 +1011,6 @@ static void show_diffstat(struct rev_info *rev,
 
 	memcpy(&opts, &rev->diffopt, sizeof(opts));
 	opts.output_format = DIFF_FORMAT_SUMMARY | DIFF_FORMAT_DIFFSTAT;
-	opts.stat_width = MAIL_DEFAULT_WRAP;
-
 	diff_setup_done(&opts);
 
 	diff_tree_oid(get_commit_tree_oid(origin),
@@ -1096,9 +1094,18 @@ static void make_cover_letter(struct rev_info *rev, int use_stdout,
 	}
 
 	if (rev->rdiff1) {
+		/*
+		 * Pass minimum required diff-options to range-diff; others
+		 * can be added later if deemed desirable.
+		 */
+		struct diff_options opts;
+		diff_setup(&opts);
+		opts.file = rev->diffopt.file;
+		opts.use_color = rev->diffopt.use_color;
+		diff_setup_done(&opts);
 		fprintf_ln(rev->diffopt.file, "%s", rev->rdiff_title);
 		show_range_diff(rev->rdiff1, rev->rdiff2,
-				rev->creation_factor, 1, &rev->diffopt);
+				rev->creation_factor, 1, &opts);
 	}
 }
 
