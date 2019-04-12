@@ -5,6 +5,7 @@
  *
  * Fetch one or more remote refs and merge it/them into the current HEAD.
  */
+#define USE_THE_INDEX_COMPATIBILITY_MACROS
 #include "cache.h"
 #include "config.h"
 #include "builtin.h"
@@ -55,6 +56,10 @@ static enum rebase_type parse_config_rebase(const char *key, const char *value,
 		return REBASE_MERGES;
 	else if (!strcmp(value, "interactive") || !strcmp(value, "i"))
 		return REBASE_INTERACTIVE;
+	/*
+	 * Please update _git_config() in git-completion.bash when you
+	 * add new rebase modes.
+	 */
 
 	if (fatal)
 		die(_("Invalid value for %s: %s"), key, value);
@@ -899,7 +904,8 @@ int cmd_pull(int argc, const char **argv, const char *prefix)
 			die(_("Updating an unborn branch with changes added to the index."));
 
 		if (!autostash)
-			require_clean_work_tree(N_("pull with rebase"),
+			require_clean_work_tree(the_repository,
+				N_("pull with rebase"),
 				_("please commit or stash them."), 1, 0);
 
 		if (get_rebase_fork_point(&rebase_fork_point, repo, *refspecs))
